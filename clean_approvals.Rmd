@@ -1,0 +1,98 @@
+---
+title: "Geocoding Board of Commerce and Industry Approvals"
+output: html_notebook
+---
+
+
+
+```{r setup}
+
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(ggmap)
+
+```
+
+```{r raw}
+
+raw <- read_excel("approvals.xlsx")
+
+names(raw) <- names(raw) %>% 
+  str_trim() %>% 
+  str_to_lower() %>% 
+  str_replace_all("[^[:alnum:]]+", "_")
+
+raw
+
+glimpse(raw)
+
+```
+
+```{r active}
+
+active <- raw %>% 
+  mutate(board_amount = str_replace_all(board_approved_amount, "\\$", ""),
+         board_amount = as.numeric(board_amount),
+         actual_benefit = str_replace_all(actual_benefit_amount, "\\$", ""),
+         actual_benefit = as.numeric(actual_benefit),
+         address = str_c(project_location_street_address_line_1,
+                         ", ",
+                         project_location_city,
+                         ", LA")) %>% 
+  filter(status_of_award %in% c("Active Contracts", "Completed"),
+         board_approval_date >= "2012-01-01", 
+         board_amount > 0,
+         actual_benefit > 0,
+         str_length(address) > 2) %>% 
+  select(company_name,
+         board_approval_date,
+         address,
+         board_amount,
+         actual_benefit)
+
+active
+
+glimpse(active)
+
+```
+
+```{r csv_0}
+
+active %>% 
+  write_csv("approvals.csv")
+
+```
+
+```{r geocode, eval=FALSE}
+
+addresses <- active %>% 
+  pull(address)
+
+addresses
+
+xy <- geocode(addresses)
+
+xy
+
+geocodeQueryCheck()
+
+```
+
+```{r lonlat, eval=FALSE}
+
+lonlat <- active %>% 
+  bind_cols(xy)
+
+lonlat
+
+```
+
+```{r csv, eval=FALSE}
+
+lonlat %>% 
+  filter(!is.na(lon),
+         !is.na(lat)) %>% 
+  write_csv("approvals.csv")
+
+```
