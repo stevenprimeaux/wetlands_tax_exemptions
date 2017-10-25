@@ -10,13 +10,17 @@ output: html_notebook
 library(tidyverse)
 library(readxl)
 library(stringr)
+library(lubridate)
 library(ggmap)
+library(taRifx.geo)
+
+# options(BingMapsKey = "ApfMs_rucb7TCYeCRF_lf6aoC5ILi2b29azypiKeZx9O1roEU_gFj4xE-YDtOh1k")
 
 ```
 
 ```{r raw}
 
-raw <- read_excel("approvals.xlsx")
+raw <- read_excel("raw_data/approvals.xlsx")
 
 names(raw) <- names(raw) %>% 
   str_trim() %>% 
@@ -24,7 +28,6 @@ names(raw) <- names(raw) %>%
   str_replace_all("[^[:alnum:]]+", "_")
 
 raw
-
 glimpse(raw)
 
 ```
@@ -32,39 +35,57 @@ glimpse(raw)
 ```{r active}
 
 active <- raw %>% 
-  mutate(board_amount = str_replace_all(board_approved_amount, "\\$", ""),
-         board_amount = as.numeric(board_amount),
-         actual_benefit = str_replace_all(actual_benefit_amount, "\\$", ""),
-         actual_benefit = as.numeric(actual_benefit),
+  mutate(actual_benefit_amount = str_replace_all(actual_benefit_amount, "\\$", ""),
+         actual_benefit_amount = as.numeric(actual_benefit_amount),
          address = str_c(project_location_street_address_line_1,
                          ", ",
                          project_location_city,
-                         ", LA")) %>% 
+                         ", LA"),
+         board_approval_date = ymd(board_approval_date)) %>% 
   filter(status_of_award %in% c("Active Contracts", "Completed"),
          board_approval_date >= "2012-01-01", 
-         board_amount > 0,
-         actual_benefit > 0,
+         actual_benefit_amount > 0,
          str_length(address) > 2) %>% 
   select(company_name,
-         board_approval_date,
          address,
-         board_amount,
-         actual_benefit)
+         approval_date = board_approval_date,
+         amount = actual_benefit_amount)
 
 active
-
 glimpse(active)
 
 ```
 
-```{r csv_0}
+```{r bing_geocoder, eval=FALSE}
 
-active %>% 
-  write_csv("approvals.csv")
+addresses <- active %>%
+  pull(address)
+
+latlon <- addresses %>% map(geocode, service = "bing")
+
+lat <- latlon %>% map_dbl(~.[1])
+lon <- latlon %>% map_dbl(~.[2])
+
+with_lonlat <- active %>%
+  mutate(lon = lon,
+         lat = lat)
 
 ```
 
-```{r geocode, eval=FALSE}
+```{r csv}
+
+with_id <- active %>% 
+  mutate(exemption_id = 1:nrow(active)) %>% 
+  select(exemption_id, everything())
+
+with_id
+glimpse(with_id)
+
+write_csv(with_id, "clean_data/exemptions.csv")
+
+```
+
+```{r ggmap, eval=FALSE}
 
 addresses <- active %>% 
   pull(address)
@@ -88,7 +109,7 @@ lonlat
 
 ```
 
-```{r csv, eval=FALSE}
+```{r csv_geocoded, eval=FALSE}
 
 lonlat %>% 
   filter(!is.na(lon),
