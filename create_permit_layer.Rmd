@@ -1,0 +1,70 @@
+---
+title: "Permit Coordinates"
+output: html_notebook
+---
+
+
+
+```{r packages}
+
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(ggmap)
+
+```
+
+```{r raw}
+
+permits <- read_csv('raw_data/permits.csv')
+names(permits) <- str_to_lower(names(permits))
+
+glimpse(permits)
+
+```
+
+```{r clean}
+
+lonlat <- permits %>% 
+  filter(!is.na(latitude),
+         !is.na(longitude)) %>% 
+  mutate(lat_clean = str_replace_all(latitude, '^,', ''),
+         long_clean = str_replace_all(longitude, '^,', ''),
+         lat_clean = str_replace_all(lat_clean, ',.+|\\(.+', ''),
+         long_clean = str_replace_all(long_clean, ',.+|\\(.+', ''),
+         lat_clean = str_replace_all(lat_clean, '[^[:digit:]\\.-]+', ''),
+         long_clean = str_replace_all(long_clean, '[^[:digit:]\\.-]+', ''),
+         lat_num = abs(as.numeric(lat_clean)),
+         long_num = abs(as.numeric(long_clean)) * -1) %>% 
+  mutate(lat_num = if_else(lat_num > 100, lat_num/100, lat_num),
+         lat_corr = if_else(lat_num < 60, lat_num, long_num),
+         long_corr = if_else(long_num < -50, long_num, lat_num),
+         lat_corr = abs(lat_corr),
+         long_corr = abs(long_corr) * -1,
+         applicant = str_trim(applicant)) %>% 
+  select(applicant, lon = long_corr, lat = lat_corr)
+
+lonlat
+
+```
+
+```{r diagnostics}
+
+ggmap(get_map('Louisiana', zoom = 6)) + 
+  geom_point(data = lonlat, aes(lon, lat))
+
+lonlat %>% summary()
+
+```
+
+```{r output}
+
+with_id <- lonlat %>% 
+  mutate(permit_id = 1:nrow(lonlat)) %>% 
+  select(permit_id, everything())
+
+with_id
+
+write_csv(with_id, 'clean_data/permits.csv')
+
+```
